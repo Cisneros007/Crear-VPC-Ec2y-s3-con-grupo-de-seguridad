@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion '2010-09-09'
+Description Plantilla para lanzar una instancia EC2, habilitar SSH y crear un bucket S3 con una VPC
+
+Parameters
+  KeyName
+    Description Nombre del SSH KeyPair
+    Type AWSEC2KeyPairKeyName
+    ConstraintDescription Proporciona el nombre de un par de claves SSH existente
+
+Resources
+  Lab16VPC
+    Type AWSEC2VPC
+    Properties
+      CidrBlock '10.0.0.016'
+      EnableDnsSupport true
+      EnableDnsHostnames true
+      Tags
+        - Key Name
+          Value Lab16VPC
+
+  PublicSubnet
+    Type AWSEC2Subnet
+    Properties
+      VpcId !Ref Lab16VPC
+      CidrBlock '10.0.0.024'
+      AvailabilityZone !Select [ 0, !GetAZs '' ]  # Seleccin automtica de la primera zona de disponibilidad
+      Tags
+        - Key Name
+          Value PublicSubnet
+
+  InternetGateway
+    Type AWSEC2InternetGateway
+    Properties
+      Tags
+        - Key Name
+          Value MyInternetGateway
+
+  AttachGateway
+    Type AWSEC2VPCGatewayAttachment
+    Properties
+      VpcId !Ref Lab16VPC
+      InternetGatewayId !Ref InternetGateway
+
+  RouteTable
+    Type AWSEC2RouteTable
+    Properties
+      VpcId !Ref Lab16VPC
+      Tags
+        - Key Name
+          Value PublicRouteTable
+
+  Route
+    Type AWSEC2Route
+    DependsOn AttachGateway
+    Properties
+      RouteTableId !Ref RouteTable
+      DestinationCidrBlock '0.0.0.00'
+      GatewayId !Ref InternetGateway
+
+  SubnetRouteTableAssociation
+    Type AWSEC2SubnetRouteTableAssociation
+    Properties
+      SubnetId !Ref PublicSubnet
+      RouteTableId !Ref RouteTable
+
+  Lab16Instance
+    Type AWSEC2Instance
+    Properties
+      InstanceType t2.micro
+      ImageId ami-04b70fa74e45c3917  
+      KeyName !Ref KeyName
+      SubnetId !Ref PublicSubnet  # Asociar la instancia a la subred pblica
+      Tags
+        - Key Name
+          Value Lab16
+
+  InstanceSecurityGroup
+    Type AWSEC2SecurityGroup
+    Properties
+      GroupName DMZSecurityGroup
+      GroupDescription Habilitar acceso SSH via puerto 22
+      VpcId !Ref Lab16VPC
+      SecurityGroupIngress
+        - IpProtocol tcp
+          FromPort 22
+          ToPort 22
+          CidrIp 0.0.0.00
+
+  Lab16DBBucket
+    Type AWSS3Bucket
+    Properties
+      BucketName lab16db 
+      AccessControl Private
+
+Outputs
+  InstanceID
+    Description Instance ID
+    Value !Ref Lab16Instance
+
+  InstancePublicIP
+    Description Public IP Address of the EC2 Instance
+    Value !GetAtt Lab16Instance.PublicDnsName  # Obtener el nombre DNS pblico de la instancia
+
+  BucketName
+    Description Nombre del bucket S3 creado
+    Value !Ref Lab16DBBucket
+    Export
+      Name !Sub ${AWSStackName}-BucketName
